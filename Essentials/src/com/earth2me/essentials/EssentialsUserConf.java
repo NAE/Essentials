@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.logging.Level;
+import org.bukkit.entity.Player;
 import org.bukkit.Bukkit;
 
 
@@ -25,25 +26,68 @@ public class EssentialsUserConf extends EssentialsConf
 	@Override
 	public boolean legacyFileExists()
 	{
-		final File file = new File(configFile.getParentFile(), username + ".yml");
+		final File file = new File(configFile.getParentFile(), username.toLowerCase() + ".yml");
 		return file.exists();
 	}
 
 	@Override
 	public void convertLegacyFile()
 	{
-		final File file = new File(configFile.getParentFile(), username + ".yml");
+		final File file = new File(configFile.getParentFile(), username.toLowerCase() + ".yml");
+        
 		try
 		{
-			Files.move(file, new File(configFile.getParentFile(), uuid + ".yml"));
+            File file2 = new File(configFile.getParentFile(), uuid.toString() + ".yml");
+            boolean success = file.renameTo(file2);
+            
+            if(!success){
+                Bukkit.getLogger().log(Level.WARNING, "Problem renaming user file for user: " + username);
+            }else{
+                Bukkit.getLogger().log(Level.INFO, "Renamed file for: " + username);
+            }
 		}
-		catch (IOException ex)
+		catch (Exception ex)
 		{
-			Bukkit.getLogger().log(Level.WARNING, "Failed to migrate user: " + username, ex);
+			Bukkit.getLogger().log(Level.WARNING, "Problem renaming user file for user: " + username, ex);
 		}
 
 		setProperty("lastAccountName", username);
 	}
+    
+    @Override
+    public boolean offlineUUIDFileExists(){
+        final UUID fn = UUID.nameUUIDFromBytes(("OfflinePlayer:" + username).getBytes(Charsets.UTF_8));
+        File offlineUUIDFile = new File(configFile.getParentFile(), fn + ".yml");
+        return offlineUUIDFile.exists();
+    }
+    
+    private File getOfflineUUIDFile(){
+        final UUID fn = UUID.nameUUIDFromBytes(("OfflinePlayer:" + username).getBytes(Charsets.UTF_8));
+		return new File(configFile.getParentFile(), fn.toString() + ".yml");
+    }
+    
+    @Override
+    public void convertOfflineUUIDFile(){
+        File oldFile = getOfflineUUIDFile();
+        try
+		{
+            //hopefully this will be the new uuid
+            File newFile = new File(configFile.getParentFile(), uuid + ".yml");
+            boolean success = oldFile.renameTo(newFile);
+            
+            if(!success){
+                Bukkit.getLogger().log(Level.WARNING, "Problem renaming old uuid file for user: " + username);
+            }else{
+                Bukkit.getLogger().log(Level.INFO, "Renamed old uuid file for: " + username);
+            }
+		}
+		catch (Exception ex)
+		{
+			Bukkit.getLogger().log(Level.WARNING, "Problem renaming old uuid file for user: " + username, ex);
+		}
+
+		setProperty("lastAccountName", username);
+    }
 
 	private File getAltFile()
 	{

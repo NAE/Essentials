@@ -3,19 +3,24 @@ package com.earth2me.essentials;
 import static com.earth2me.essentials.I18n.tl;
 import com.earth2me.essentials.textreader.IText;
 import com.earth2me.essentials.textreader.KeywordReplacer;
+import com.earth2me.essentials.craftbukkit.BanLookup;
 import com.earth2me.essentials.textreader.TextInput;
 import com.earth2me.essentials.textreader.TextPager;
 import com.earth2me.essentials.utils.LocationUtil;
+import com.earth2me.essentials.Console;
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
+import java.io.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import net.ess3.api.IEssentials;
 import org.bukkit.GameMode;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.BanList;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -30,6 +35,15 @@ import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import java.security.DigestInputStream;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import com.earth2me.essentials.craftbukkit.FakeWorld;
+import com.earth2me.essentials.settings.Spawns;
+import com.earth2me.essentials.storage.YamlStorageWriter;
+import com.earth2me.essentials.utils.StringUtil;
+import com.google.common.base.Charsets;
+import net.ess3.api.IEssentials;
 
 
 public class EssentialsPlayerListener implements Listener
@@ -198,6 +212,8 @@ public class EssentialsPlayerListener implements Listener
 	public void onPlayerJoin(final PlayerJoinEvent event)
 	{
 		final String joinMessage = event.getJoinMessage();
+        convertPlayerToUUID(event.getPlayer());
+        playerConvertBanFormat(event.getPlayer());
 		ess.runTaskAsynchronously(new Runnable()
 		{
 			@Override
@@ -209,6 +225,185 @@ public class EssentialsPlayerListener implements Listener
 		if (ess.getSettings().allowSilentJoinQuit() || ess.getSettings().isCustomJoinMessage())
 		{
 			event.setJoinMessage(null);
+		}
+	}
+    
+    public void convertPlayerToUUID(Player player){
+        boolean success = convertPlayerToUUID(player.getName(), player.getUniqueId());
+        if (!success){
+            player.sendMessage(ChatColor.GOLD + "[DC] Unable to convert your user file. Please log off and on again in a few minutes.");
+        }
+    }
+    
+    public boolean convertPlayerToUUID(String casePlayerName, UUID uuid)
+    {
+        final File userdir = new File(ess.getDataFolder(), "userdata");
+		if (!userdir.exists())
+		{
+			return true;
+		}
+        
+        String playerName = casePlayerName.toLowerCase();
+        String expectedLegacyFileName = playerName + ".yml";
+        File expectedLegacyFile = new File(userdir, expectedLegacyFileName);
+        
+        final UUID fn = UUID.nameUUIDFromBytes(("OfflinePlayer:" + casePlayerName).getBytes(Charsets.UTF_8));
+        
+        if (fn.equals(uuid))
+        {
+            //this is an old uuid, don't bother doing anything
+            ess.getLogger().warning("Was unable to convert user file for: " + playerName);
+            return false;
+        }
+        
+		File oldUUIDFile = new File(userdir, fn.toString() + ".yml");
+        
+        File renameFile = null;
+        if (expectedLegacyFile.exists())
+        {
+            renameFile = expectedLegacyFile;
+        }
+        else if (oldUUIDFile.exists())
+        {
+            renameFile = oldUUIDFile;
+        }
+        else
+        {
+            return true;
+        }
+            
+        if (renameFile.exists())
+        {
+            EssentialsUserConf userConf;
+            EssentialsConf conf = new EssentialsConf(renameFile);
+            conf.load();
+                
+            //check if the user is an npc
+            if (conf.getBoolean("npc", false))
+            {
+                uuid = UUID.nameUUIDFromBytes(("NPC:" + playerName).getBytes(Charsets.UTF_8));
+            }
+            
+            if (uuid != null)
+            {
+                conf.setProperty("lastAccountName", casePlayerName);
+                conf.forceSave();
+                
+                File file2 = new File(userdir, uuid.toString() + ".yml");
+                boolean renameSuccess = renameFile.renameTo(file2);
+                
+                if(renameSuccess)
+                {
+                    ess.getLogger().info("Converted user file for: " + casePlayerName);
+                }
+                
+                ess.getUserMap().trackUUID(uuid, playerName, false);
+                ess.getUserMap().getUUIDMap().forceWriteUUIDMap();
+                return renameSuccess;
+            }
+            else
+            {
+                //uuid conversion failed
+                ess.getLogger().warning("Was unable to convert user file for: " + playerName);
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    public void playerConvertBanFormat(Player player){
+        String casePlayerName = player.getName();
+        UUID playerUUID = player.getUniqueId();
+        
+        final UUID fn = UUID.nameUUIDFromBytes(("OfflinePlayer:" + casePlayerName).getBytes(Charsets.UTF_8));
+        
+        if (fn.equals(playerUUID))
+        {
+            //this is an old uuid, don't bother doing anything
+            ess.getLogger().warning("Will convert ban format on next join for: " + casePlayerName);
+            return;
+        }
+        
+        final File userdir = new File(ess.getDataFolder(), "userdata");
+		if (!userdir.exists())
+		{
+			return;
+		}
+        
+        String playerName = casePlayerName.toLowerCase();
+        String expectedLegacyFileName = playerName + ".yml";
+        File expectedLegacyFile = new File(userdir, expectedLegacyFileName);
+        
+        File uuidUserFile = new File(userdir, playerUUID + ".yml");
+        
+        File chosenFile = null;
+        
+        if(uuidUserFile.exists() && !uuidUserFile.isDirectory())
+        {
+            chosenFile = uuidUserFile;
+        }
+        else if(expectedLegacyFile.exists() && !expectedLegacyFile.isDirectory())
+        {
+            chosenFile = expectedLegacyFile;
+        }
+        else
+        {
+            ess.getLogger().info("Will convert ban format on next join for: " + playerName);
+            return;
+        }
+        
+        final EssentialsConf conf = new EssentialsConf(chosenFile);
+        conf.load();
+        
+        String banReason;
+        Long banTimeout;
+
+        try
+        {
+            banReason = conf.getConfigurationSection("ban").getString("reason");
+        }
+        catch (NullPointerException n)
+        {
+            banReason = null;
+        }
+
+        final String lastPlayerName = conf.getString("lastAccountName");
+        if (lastPlayerName != null && lastPlayerName.length() > 1 && banReason != null && banReason.length() > 1)
+        {
+            try
+            {
+                if (conf.getConfigurationSection("ban").contains("timeout"))
+                {
+                    banTimeout = Long.parseLong(conf.getConfigurationSection("ban").getString("timeout"));
+                }
+                else
+                {
+                    banTimeout = 0L;
+                }
+            }
+            catch (NumberFormatException n)
+            {
+                banTimeout = 0L;
+            }
+            
+            if (BanLookup.isBanned(ess, lastPlayerName))
+            {
+                updateBan(playerName, banReason, banTimeout);
+            }
+        }
+        conf.removeProperty("ban");
+        conf.save();
+    }
+    
+    private void updateBan(String playerName, String banReason, Long banTimeout)
+	{
+		if (banTimeout == 0)
+		{
+			Bukkit.getBanList(BanList.Type.NAME).addBan(playerName, banReason, null, Console.NAME);
+		}
+		else
+		{
+			Bukkit.getBanList(BanList.Type.NAME).addBan(playerName, banReason, new Date(banTimeout), Console.NAME);
 		}
 	}
 

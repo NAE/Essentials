@@ -13,6 +13,8 @@ import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import java.util.UUID;
+import com.google.common.base.Charsets;
 
 
 public abstract class UserData extends PlayerExtension implements IConf
@@ -41,6 +43,12 @@ public abstract class UserData extends PlayerExtension implements IConf
 			ess.getLogger().warning("Falling back to old username system for " + base.getName());
 			filename = base.getName();
 		}
+        
+        final UUID fn = UUID.nameUUIDFromBytes(("OfflinePlayer:" + base.getName()).getBytes(Charsets.UTF_8));
+        if(fn.equals(base.getUniqueId())){
+            //this is an old uuid. do not convert the player file
+            filename = base.getName().toLowerCase();
+        }
 
 		config = new EssentialsUserConf(base.getName(), base.getUniqueId(), new File(folder, filename + ".yml"));
 		reloadConfig();

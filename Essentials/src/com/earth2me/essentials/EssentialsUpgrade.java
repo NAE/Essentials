@@ -774,8 +774,8 @@ public class EssentialsUpgrade
 		deleteOldItemsCsv();
 		updateSpawnsToNewSpawnsConfig();
 		updateJailsToNewJailsConfig();
-		uuidFileChange();
-		banFormatChange();
+		//uuidFileChange();
+		//banFormatChange();
 		warnMetrics();
 	}
 }

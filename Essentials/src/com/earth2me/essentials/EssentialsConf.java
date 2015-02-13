@@ -100,6 +100,11 @@ public class EssentialsConf extends YamlConfiguration
 
 		if (!configFile.exists())
 		{
+            System.out.println("config file did not exist");
+            if (offlineUUIDFileExists())
+            {
+                convertOfflineUUIDFile();
+            }
 			if (legacyFileExists())
 			{
 				convertLegacyFile();
@@ -198,6 +203,15 @@ public class EssentialsConf extends YamlConfiguration
 	public void convertLegacyFile()
 	{
 		LOGGER.log(Level.SEVERE, "Unable to import legacy config file.");
+	}
+    
+    public boolean offlineUUIDFileExists(){
+        return false;
+    }
+    
+    public void convertOfflineUUIDFile()
+	{
+		LOGGER.log(Level.SEVERE, "Unable to import offline uuid config file.");
 	}
 
 	public boolean altFileExists()
